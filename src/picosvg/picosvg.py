@@ -41,6 +41,11 @@ flags.DEFINE_bool(
     False,
     "Whether to allow text elements. Note that they will not be converted to paths, just pass through to the output.",
 )
+flags.DEFINE_bool(
+    "allow_all_defs",
+    False,
+    "Allow all defs elements (filter, mask, pattern, etc.) and root-level switch/symbol to pass through.",
+)
 
 
 def _run(argv):
@@ -56,7 +61,7 @@ def _run(argv):
 
     # Do the needful
     svg = svg.topicosvg(
-        allow_text=FLAGS.allow_text, drop_unsupported=FLAGS.drop_unsupported
+        allow_text=FLAGS.allow_text, allow_all_defs=FLAGS.allow_all_defs, drop_unsupported=FLAGS.drop_unsupported
     )
 
     if FLAGS.clip_to_viewbox:

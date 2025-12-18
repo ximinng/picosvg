@@ -632,7 +632,12 @@ class SVG:
         clip_paths = [
             from_element(e).apply_transform(_element_transform(e, transform))
             for e in clip_path_el
+            if _is_shape(e.tag)
         ]
+
+        # Return empty path if no valid clip paths found
+        if not clip_paths:
+            return SVGPath()
 
         clip = SVGPath.from_commands(union(clip_paths))
 
@@ -753,7 +758,7 @@ class SVG:
         self._add_to_defs(defs, new_fill)
         return new_fill
 
-    def _simplify(self):
+    def _simplify(self, allow_all_defs=False):
         """
         Removes groups where possible, applies transforms, applies clip paths.
         """
@@ -854,19 +859,21 @@ class SVG:
 
         # After simplification only gradient defs should be referenced
         # It's illegal for picosvg to leave anything else in defs
-        for unused_el in [el for el in defs if not _is_gradient(el)]:
-            defs.remove(unused_el)
+        # Unless allow_all_defs is True, in which case we keep all defs elements
+        if not allow_all_defs:
+            for unused_el in [el for el in defs if not _is_gradient(el)]:
+                defs.remove(unused_el)
 
         self.elements = None  # force elements to reload
 
-    def simplify(self, inplace=False):
+    def simplify(self, inplace=False, allow_all_defs=False):
         if not inplace:
             svg = self._clone()
-            svg.simplify(inplace=True)
+            svg.simplify(inplace=True, allow_all_defs=allow_all_defs)
             return svg
 
         self._update_etree()
-        self._simplify()
+        self._simplify(allow_all_defs=allow_all_defs)
         return self
 
     def _stroke(self, shape):
@@ -1331,7 +1338,7 @@ class SVG:
             if grad.attrib.get("id") not in used_gradient_ids:
                 _safe_remove(grad)
 
-    def checkpicosvg(self, allow_text=False, drop_unsupported=False):
+    def checkpicosvg(self, allow_text=False, allow_all_defs=False, drop_unsupported=False):
         """Check for nano violations, return xpaths to bad elements.
 
         If result sequence empty then this is a valid picosvg.
@@ -1351,6 +1358,15 @@ class SVG:
         if allow_text:
             path_allowlist.add(
                 r"^/svg\[0\](/(text|textPath)\[\d+\])+(/(text|tspan|textPath)\[\d+\])*$"
+            )
+        if allow_all_defs:
+            # Allow any element in defs with arbitrary nesting depth
+            path_allowlist.add(
+                r"^/svg\[0\]/defs\[0\]/[a-zA-Z]+\[\d+\](/[a-zA-Z]+\[\d+\])*$"
+            )
+            # Allow switch/symbol/foreignObject/use at root level with children
+            path_allowlist.add(
+                r"^/svg\[0\](/(switch|symbol|foreignObject|use)\[\d+\])+(/[a-zA-Z]+\[\d+\])*$"
             )
         paths_required = {
             "/svg[0]",
@@ -1389,7 +1405,7 @@ class SVG:
         return tuple(errors)
 
     def topicosvg(
-        self, *, ndigits=3, inplace=False, allow_text=False, drop_unsupported=False
+        self, *, ndigits=3, inplace=False, allow_text=False, allow_all_defs=False, drop_unsupported=False
     ):
         if not inplace:
             svg = self._clone()
@@ -1397,6 +1413,7 @@ class SVG:
                 ndigits=ndigits,
                 inplace=True,
                 allow_text=allow_text,
+                allow_all_defs=allow_all_defs,
                 drop_unsupported=drop_unsupported,
             )
             return svg
@@ -1417,7 +1434,7 @@ class SVG:
         self.resolve_use(inplace=True)
 
         # Simplify things that do not simplify in isolation
-        self.simplify(inplace=True)
+        self.simplify(inplace=True, allow_all_defs=allow_all_defs)
 
         # Tidy up
         self.evenodd_to_nonzero_winding(inplace=True)
@@ -1430,7 +1447,7 @@ class SVG:
         self.remove_unpainted_shapes(inplace=True)
 
         violations = self.checkpicosvg(
-            allow_text=allow_text, drop_unsupported=drop_unsupported
+            allow_text=allow_text, allow_all_defs=allow_all_defs, drop_unsupported=drop_unsupported
         )
         if violations:
             raise ValueError("Unable to convert to picosvg: " + ",".join(violations))

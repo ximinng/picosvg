@@ -942,3 +942,126 @@ def test_svg_namespace_auto_added(svg_input: str, should_have_svg_ns: bool):
     if should_have_svg_ns:
         # Should automatically add SVG namespace
         assert tree.nsmap.get(None) == "http://www.w3.org/2000/svg"
+
+
+@pytest.mark.parametrize(
+    "svg_string, expected_passthrough",
+    [
+        # Test filter element in defs
+        (
+            """
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <filter id="blur1">
+                        <feGaussianBlur stdDeviation="5"/>
+                    </filter>
+                </defs>
+                <path d="M10,10 L90,90" fill="red"/>
+            </svg>
+            """,
+            "filter",
+        ),
+        # Test mask element in defs
+        (
+            """
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <mask id="mask1">
+                        <rect x="0" y="0" width="50" height="50" fill="white"/>
+                    </mask>
+                </defs>
+                <path d="M10,10 L90,90" fill="blue"/>
+            </svg>
+            """,
+            "mask",
+        ),
+        # Test switch element at root level
+        (
+            """
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs></defs>
+                <switch>
+                    <g systemLanguage="en">
+                        <path d="M10,10 L90,90" fill="green"/>
+                    </g>
+                </switch>
+            </svg>
+            """,
+            "switch",
+        ),
+        # Test pattern element in defs
+        (
+            """
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <pattern id="pattern1" width="10" height="10" patternUnits="userSpaceOnUse">
+                        <rect width="10" height="10" fill="red"/>
+                    </pattern>
+                </defs>
+                <path d="M10,10 L90,90" fill="blue"/>
+            </svg>
+            """,
+            "pattern",
+        ),
+    ],
+)
+def test_allow_all_defs(svg_string, expected_passthrough):
+    """Test that allow_all_defs flag preserves filter/mask/switch/pattern elements."""
+    svg = SVG.fromstring(svg_string)
+
+    # Without flag, elements may be removed or cause errors (default picosvg behavior)
+    try:
+        result_without_flag = svg.topicosvg().tostring()
+    except ValueError:
+        # Some elements (like switch at root level) may cause errors without the flag
+        pass
+
+    # With allow_all_defs=True, elements should be preserved
+    svg2 = SVG.fromstring(svg_string)
+    result_with_flag = svg2.topicosvg(allow_all_defs=True).tostring()
+    assert expected_passthrough in result_with_flag
+
+
+def test_allow_all_defs_complex_filter():
+    """Test allow_all_defs with complex filter containing multiple primitives."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="4" dy="4" stdDeviation="4" flood-color="black" flood-opacity="0.5"/>
+            </filter>
+            <filter id="blur">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="3"/>
+            </filter>
+        </defs>
+        <path d="M50,50 L150,50 L100,150 Z" fill="red"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+
+    # With flag, should preserve filters
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+    assert "filter" in result
+    assert "feDropShadow" in result or "feGaussianBlur" in result
+
+
+def test_empty_clip_path_no_crash():
+    """Test that empty or invalid clipPath doesn't crash (None bug fix)."""
+    # This tests the fix for _resolve_clip_path returning None when clip_paths is empty
+    svg_string = """
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <clipPath id="emptyClip">
+                <!-- Empty clipPath with no shapes -->
+            </clipPath>
+        </defs>
+        <path d="M10,10 L90,90" fill="red" clip-path="url(#emptyClip)"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    # Should not crash with TypeError: 'NoneType' object is not iterable
+    try:
+        svg.topicosvg()
+    except ValueError:
+        # ValueError is acceptable (BadElement), but TypeError should not happen
+        pass
