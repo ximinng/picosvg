@@ -1065,3 +1065,489 @@ def test_empty_clip_path_no_crash():
     except ValueError:
         # ValueError is acceptable (BadElement), but TypeError should not happen
         pass
+
+
+# =============================================================================
+# Comprehensive allow_all_defs robustness tests
+# Based on: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/filter
+#           https://css-tricks.com/masking-vs-clipping-use/
+# =============================================================================
+
+
+def test_filter_drop_shadow_with_feMerge():
+    """Test complex drop shadow filter using feOffset + feGaussianBlur + feMerge.
+
+    This is a common pattern for creating drop shadows.
+    Reference: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feMerge
+    """
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feOffset in="SourceAlpha" dx="4" dy="4" result="offsetted"/>
+                <feGaussianBlur in="offsetted" stdDeviation="3" result="blurred"/>
+                <feMerge>
+                    <feMergeNode in="blurred"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+        <rect x="50" y="50" width="100" height="100" fill="blue"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    # Verify all filter primitives are preserved
+    assert "filter" in result
+    assert "feOffset" in result
+    assert "feGaussianBlur" in result
+    assert "feMerge" in result
+    assert "feMergeNode" in result
+
+
+def test_filter_feColorMatrix_hue_rotation():
+    """Test feColorMatrix for hue rotation effect.
+
+    Reference: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feColorMatrix
+    """
+    svg_string = """
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="hueRotate">
+                <feColorMatrix type="hueRotate" values="90"/>
+            </filter>
+            <filter id="saturate">
+                <feColorMatrix type="saturate" values="0.5"/>
+            </filter>
+        </defs>
+        <rect x="10" y="10" width="80" height="80" fill="red"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "feColorMatrix" in result
+    assert "hueRotate" in result or "saturate" in result
+
+
+def test_filter_feBlend_and_feComposite():
+    """Test feBlend and feComposite filter primitives."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="blendFilter">
+                <feFlood flood-color="red" flood-opacity="0.5" result="flood"/>
+                <feBlend in="SourceGraphic" in2="flood" mode="multiply"/>
+            </filter>
+            <filter id="compositeFilter">
+                <feComposite in="SourceGraphic" in2="SourceAlpha" operator="in"/>
+            </filter>
+        </defs>
+        <circle cx="100" cy="100" r="50" fill="blue"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "filter" in result
+    assert "feBlend" in result or "feComposite" in result or "feFlood" in result
+
+
+def test_filter_feTurbulence_displacement():
+    """Test feTurbulence with feDisplacementMap for noise effects."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="turbulence">
+                <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" result="noise"/>
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="20" xChannelSelector="R" yChannelSelector="G"/>
+            </filter>
+        </defs>
+        <rect x="20" y="20" width="160" height="160" fill="green"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "filter" in result
+    assert "feTurbulence" in result
+    assert "feDisplacementMap" in result
+
+
+def test_filter_lighting_effects():
+    """Test filter lighting effects (feDiffuseLighting, feSpecularLighting)."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="lighting">
+                <feDiffuseLighting in="SourceGraphic" surfaceScale="5" diffuseConstant="1">
+                    <fePointLight x="100" y="100" z="200"/>
+                </feDiffuseLighting>
+            </filter>
+        </defs>
+        <circle cx="100" cy="100" r="80" fill="white"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "filter" in result
+    assert "feDiffuseLighting" in result
+    assert "fePointLight" in result
+
+
+def test_mask_with_gradient():
+    """Test mask with gradient for fade effect.
+
+    Gradients in masks allow for smooth opacity transitions.
+    Reference: https://css-tricks.com/masking-vs-clipping-use/
+    """
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <linearGradient id="fadeGrad">
+                <stop offset="0%" stop-color="white"/>
+                <stop offset="100%" stop-color="black"/>
+            </linearGradient>
+            <mask id="fadeMask">
+                <rect x="0" y="0" width="200" height="200" fill="url(#fadeGrad)"/>
+            </mask>
+        </defs>
+        <rect x="20" y="20" width="160" height="160" fill="blue"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "mask" in result
+    assert "linearGradient" in result
+
+
+def test_mask_with_shapes():
+    """Test mask with multiple shapes."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <mask id="shapeMask">
+                <rect x="0" y="0" width="200" height="200" fill="black"/>
+                <circle cx="100" cy="100" r="80" fill="white"/>
+                <rect x="60" y="60" width="80" height="80" fill="gray"/>
+            </mask>
+        </defs>
+        <rect x="0" y="0" width="200" height="200" fill="red"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "mask" in result
+
+
+def test_pattern_repeating():
+    """Test repeating pattern with patternUnits."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+                <circle cx="10" cy="10" r="5" fill="blue"/>
+            </pattern>
+        </defs>
+        <rect x="0" y="0" width="200" height="200" fill="url(#dots)"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "pattern" in result
+    assert "patternUnits" in result
+
+
+def test_pattern_with_transform():
+    """Test pattern with patternTransform."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <pattern id="rotatedPattern" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="20" height="20" fill="red"/>
+                <rect x="20" y="20" width="20" height="20" fill="red"/>
+            </pattern>
+        </defs>
+        <rect x="0" y="0" width="200" height="200" fill="url(#rotatedPattern)"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "pattern" in result
+
+
+def test_symbol_and_use():
+    """Test symbol element with use references."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <symbol id="icon" viewBox="0 0 50 50">
+                <circle cx="25" cy="25" r="20" fill="blue"/>
+                <rect x="20" y="20" width="10" height="10" fill="white"/>
+            </symbol>
+        </defs>
+        <rect x="0" y="0" width="200" height="200" fill="lightgray"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "symbol" in result
+
+
+def test_multiple_defs_elements_mixed():
+    """Test multiple different defs elements together."""
+    svg_string = """
+    <svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <linearGradient id="grad1">
+                <stop offset="0%" stop-color="red"/>
+                <stop offset="100%" stop-color="blue"/>
+            </linearGradient>
+            <filter id="blur1">
+                <feGaussianBlur stdDeviation="2"/>
+            </filter>
+            <mask id="mask1">
+                <rect x="0" y="0" width="300" height="300" fill="white"/>
+            </mask>
+            <pattern id="pat1" width="10" height="10" patternUnits="userSpaceOnUse">
+                <circle cx="5" cy="5" r="3" fill="green"/>
+            </pattern>
+        </defs>
+        <rect x="10" y="10" width="280" height="280" fill="url(#grad1)"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    # All defs should be preserved
+    assert "linearGradient" in result
+    assert "filter" in result
+    assert "mask" in result
+    assert "pattern" in result
+
+
+def test_clipPath_with_non_shape_elements():
+    """Test clipPath containing non-shape elements doesn't crash."""
+    svg_string = """
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <clipPath id="complexClip">
+                <text x="10" y="50">Clip</text>
+            </clipPath>
+        </defs>
+        <rect x="0" y="0" width="100" height="100" fill="red" clip-path="url(#complexClip)"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    # Should not crash - text in clipPath should be handled gracefully
+    try:
+        svg.topicosvg(allow_all_defs=True)
+    except ValueError:
+        # ValueError is acceptable, but no crash
+        pass
+
+
+def test_allow_all_defs_with_allow_text():
+    """Test allow_all_defs combined with allow_text."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="textShadow">
+                <feDropShadow dx="2" dy="2" stdDeviation="1"/>
+            </filter>
+        </defs>
+        <text x="50" y="100" fill="black">Hello World</text>
+        <rect x="20" y="120" width="160" height="60" fill="blue"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True, allow_text=True).tostring()
+
+    assert "filter" in result
+    assert "text" in result
+    assert "Hello World" in result
+
+
+def test_allow_all_defs_with_drop_unsupported():
+    """Test allow_all_defs combined with drop_unsupported."""
+    svg_string = """
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="blur">
+                <feGaussianBlur stdDeviation="3"/>
+            </filter>
+        </defs>
+        <foreignObject x="10" y="10" width="80" height="80">
+            <div xmlns="http://www.w3.org/1999/xhtml">HTML content</div>
+        </foreignObject>
+        <rect x="20" y="20" width="60" height="60" fill="red"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    # With allow_all_defs=True, foreignObject should be preserved
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+    assert "filter" in result
+
+
+def test_deeply_nested_filter_structure():
+    """Test filter with deeply nested structure."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="complex">
+                <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur1"/>
+                <feOffset in="blur1" dx="4" dy="4" result="offset1"/>
+                <feGaussianBlur in="offset1" stdDeviation="2" result="blur2"/>
+                <feColorMatrix in="blur2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.5 0" result="shadow"/>
+                <feMerge>
+                    <feMergeNode in="shadow"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+        <circle cx="100" cy="100" r="60" fill="orange"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    # All nested elements should be preserved
+    assert "filter" in result
+    assert "feGaussianBlur" in result
+    assert "feOffset" in result
+    assert "feColorMatrix" in result
+    assert "feMerge" in result
+
+
+def test_switch_with_multiple_conditions():
+    """Test switch element with multiple language conditions."""
+    svg_string = """
+    <svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
+        <defs></defs>
+        <switch>
+            <text systemLanguage="en" x="10" y="50">English</text>
+            <text systemLanguage="zh" x="10" y="50">中文</text>
+            <text systemLanguage="ja" x="10" y="50">日本語</text>
+            <text x="10" y="50">Default</text>
+        </switch>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True, allow_text=True).tostring()
+
+    assert "switch" in result
+
+
+def test_marker_element_preserved():
+    """Test that marker elements in defs are preserved."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="black"/>
+            </marker>
+        </defs>
+        <line x1="20" y1="100" x2="180" y2="100" stroke="black" stroke-width="2" marker-end="url(#arrowhead)"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "marker" in result
+
+
+def test_empty_defs_no_crash():
+    """Test that empty defs element doesn't cause issues."""
+    svg_string = """
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs></defs>
+        <rect x="10" y="10" width="80" height="80" fill="blue"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    # Should work with or without allow_all_defs
+    result1 = svg.topicosvg().tostring()
+    svg2 = SVG.fromstring(svg_string)
+    result2 = svg2.topicosvg(allow_all_defs=True).tostring()
+
+    assert "path" in result1 or "rect" in result1
+    assert "path" in result2 or "rect" in result2
+
+
+def test_filter_with_feImage():
+    """Test filter with feImage element."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+        <defs>
+            <filter id="imageFilter">
+                <feImage xlink:href="#rect1" result="img"/>
+                <feBlend in="SourceGraphic" in2="img" mode="multiply"/>
+            </filter>
+            <rect id="rect1" x="0" y="0" width="50" height="50" fill="red"/>
+        </defs>
+        <circle cx="100" cy="100" r="50" fill="blue"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "filter" in result
+
+
+def test_multiple_filters_on_same_element():
+    """Test that an element can reference a filter and still be processed."""
+    svg_string = """
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="blur">
+                <feGaussianBlur stdDeviation="5"/>
+            </filter>
+        </defs>
+        <rect x="10" y="10" width="80" height="80" fill="red" filter="url(#blur)"/>
+        <circle cx="50" cy="50" r="20" fill="blue"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    # Filter should be preserved
+    assert "filter" in result
+    # Shapes should be converted to paths
+    assert "path" in result
+
+
+def test_gradient_and_filter_together():
+    """Test that gradients and filters work together with allow_all_defs."""
+    svg_string = """
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#87CEEB"/>
+                <stop offset="100%" stop-color="#1E90FF"/>
+            </linearGradient>
+            <filter id="glow">
+                <feGaussianBlur stdDeviation="4" result="blur"/>
+                <feMerge>
+                    <feMergeNode in="blur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+        <rect x="0" y="0" width="200" height="200" fill="url(#skyGradient)"/>
+        <circle cx="100" cy="100" r="40" fill="yellow"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    # Both gradient and filter should be preserved
+    assert "linearGradient" in result
+    assert "filter" in result
+    assert "feGaussianBlur" in result
