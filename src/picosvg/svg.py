@@ -1368,6 +1368,10 @@ class SVG:
             path_allowlist.add(
                 r"^/svg\[0\](/(switch|symbol|foreignObject|use)\[\d+\])+(/[a-zA-Z]+\[\d+\])*$"
             )
+            # Allow style/pattern/mask/clipPath at root level (non-standard but common)
+            path_allowlist.add(
+                r"^/svg\[0\]/(style|pattern|mask|clipPath)\[\d+\](/[a-zA-Z]+\[\d+\])*$"
+            )
         paths_required = {
             "/svg[0]",
             "/svg[0]/defs[0]",

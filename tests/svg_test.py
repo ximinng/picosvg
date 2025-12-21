@@ -17,10 +17,9 @@ from copy import deepcopy
 from textwrap import dedent
 from lxml import etree
 import math
-import os
 import pytest
 from picosvg.svg import SVG, SVGPath
-from picosvg.svg_meta import strip_ns, parse_css_declarations
+from picosvg.svg_meta import parse_css_declarations
 import re
 from svg_test_helpers import *
 from typing import Tuple
@@ -1011,7 +1010,7 @@ def test_allow_all_defs(svg_string, expected_passthrough):
 
     # Without flag, elements may be removed or cause errors (default picosvg behavior)
     try:
-        result_without_flag = svg.topicosvg().tostring()
+        svg.topicosvg().tostring()
     except ValueError:
         # Some elements (like switch at root level) may cause errors without the flag
         pass
@@ -1551,3 +1550,106 @@ def test_gradient_and_filter_together():
     assert "linearGradient" in result
     assert "filter" in result
     assert "feGaussianBlur" in result
+
+
+def test_root_level_style_element():
+    """Test that root-level style element is preserved with allow_all_defs."""
+    svg_string = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <defs></defs>
+        <style>.cls-1{fill:#ff0000}.cls-2{fill:#00ff00}</style>
+        <path class="cls-1" d="M10,10 L90,10 L90,90 Z"/>
+        <path class="cls-2" d="M10,10 L10,90 L90,90 Z"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "style" in result
+    assert "cls-1" in result
+    assert "cls-2" in result
+
+
+def test_root_level_pattern_element():
+    """Test that root-level pattern element is preserved with allow_all_defs."""
+    svg_string = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <pattern id="dots" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="5" cy="5" r="3" fill="blue"/>
+        </pattern>
+        <defs></defs>
+        <rect x="10" y="10" width="80" height="80" fill="url(#dots)"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "pattern" in result
+
+
+def test_root_level_mask_element():
+    """Test that root-level mask element is preserved with allow_all_defs."""
+    svg_string = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+        <mask id="myMask">
+            <rect x="0" y="0" width="200" height="200" fill="white"/>
+            <circle cx="100" cy="100" r="50" fill="black"/>
+        </mask>
+        <defs></defs>
+        <rect x="0" y="0" width="200" height="200" fill="blue"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "mask" in result
+
+
+def test_root_level_clipPath_element():
+    """Test that root-level clipPath element is processed correctly.
+
+    Note: clipPath is consumed by picosvg (applied to shapes then removed),
+    so we just verify it doesn't crash.
+    """
+    svg_string = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <clipPath id="myClip">
+            <circle cx="50" cy="50" r="40"/>
+        </clipPath>
+        <defs></defs>
+        <rect x="0" y="0" width="100" height="100" fill="red"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    # Should not crash - clipPath is processed and removed
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+    assert "path" in result  # rect converted to path
+
+
+def test_combined_root_level_elements():
+    """Test multiple root-level elements (style, pattern, mask) together."""
+    svg_string = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+        <style>.highlight{fill:#ffcc00}</style>
+        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <rect width="20" height="20" fill="white" stroke="gray"/>
+        </pattern>
+        <mask id="fade">
+            <rect width="200" height="200" fill="white"/>
+        </mask>
+        <defs>
+            <linearGradient id="grad">
+                <stop offset="0%" stop-color="red"/>
+                <stop offset="100%" stop-color="blue"/>
+            </linearGradient>
+        </defs>
+        <rect x="10" y="10" width="180" height="180" fill="url(#grad)"/>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+
+    assert "style" in result
+    assert "pattern" in result
+    assert "mask" in result
+    assert "linearGradient" in result
