@@ -787,15 +787,18 @@ class SVG:
                     "fill", ""
                 ):
                     fill_el = self.resolve_url(el.attrib["fill"], "*")
-                    self._apply_gradient_template(fill_el)
-                    fill_el = self._transformed_gradient(
-                        defs,
-                        fill_el,
-                        context.transform,
-                        from_element(el).bounding_box(),
-                    )
-                    fill_id = fill_el.attrib["id"]
-                    el.attrib["fill"] = f"url(#{fill_id})"
+                    # Only apply gradient transform if fill_el is actually a gradient
+                    # (not pattern or other paint server)
+                    if _is_gradient(fill_el.tag):
+                        self._apply_gradient_template(fill_el)
+                        fill_el = self._transformed_gradient(
+                            defs,
+                            fill_el,
+                            context.transform,
+                            from_element(el).bounding_box(),
+                        )
+                        fill_id = fill_el.attrib["id"]
+                        el.attrib["fill"] = f"url(#{fill_id})"
 
                 paths = [from_element(el).as_path().absolute(inplace=True)]
                 initial_path = copy.deepcopy(paths[0])
@@ -1356,8 +1359,9 @@ class SVG:
             r"^/svg\[0\](/(path|g)\[\d+\])+$",
         }
         if allow_text:
+            # Allow text elements directly under svg or nested within g elements
             path_allowlist.add(
-                r"^/svg\[0\](/(text|textPath)\[\d+\])+(/(text|tspan|textPath)\[\d+\])*$"
+                r"^/svg\[0\](/(path|g)\[\d+\])*(/(text|textPath)\[\d+\])+(/(text|tspan|textPath)\[\d+\])*$"
             )
         if allow_all_defs:
             # Allow any element in defs with arbitrary nesting depth

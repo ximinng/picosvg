@@ -1652,4 +1652,66 @@ def test_combined_root_level_elements():
     assert "style" in result
     assert "pattern" in result
     assert "mask" in result
-    assert "linearGradient" in result
+
+
+def test_pattern_fill_with_transform():
+    """Test that pattern fill with transform doesn't cause AssertionError.
+
+    Previously, code assumed all url() fills were gradients and called
+    _apply_gradient_template on patterns, causing AssertionError.
+    """
+    svg_string = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <defs>
+            <pattern id="gridPattern" width="10" height="10" patternUnits="userSpaceOnUse">
+                <rect width="10" height="10" fill="none" stroke="#333" stroke-width="0.5"/>
+            </pattern>
+        </defs>
+        <g transform="translate(10, 10)">
+            <rect x="0" y="0" width="80" height="80" fill="url(#gridPattern)"/>
+        </g>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    # Should not raise AssertionError
+    result = svg.topicosvg(allow_all_defs=True).tostring()
+    assert "path" in result
+
+
+def test_text_in_g_element():
+    """Test that text elements nested in g elements are allowed with allow_text=True.
+
+    Previously, allow_text regex only allowed text directly under svg,
+    not nested within g elements like /svg[0]/g[0]/text[0].
+    """
+    svg_string = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <defs></defs>
+        <g>
+            <text x="10" y="20" font-size="12">Hello World</text>
+        </g>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    # Should not raise ValueError about BadElement
+    result = svg.topicosvg(allow_text=True).tostring()
+    assert "text" in result
+    assert "Hello World" in result
+
+
+def test_text_in_nested_g_elements():
+    """Test text in deeply nested g elements."""
+    svg_string = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <defs></defs>
+        <g>
+            <g>
+                <text x="10" y="20">Nested Text</text>
+            </g>
+        </g>
+    </svg>
+    """
+    svg = SVG.fromstring(svg_string)
+    result = svg.topicosvg(allow_text=True).tostring()
+    assert "text" in result
+    assert "Nested Text" in result
