@@ -300,6 +300,11 @@ class Affine2D(NamedTuple):
             return Affine2D.identity(), affine_prime
 
         a, b, c, d, e, f = self
+
+        # Handle degenerate matrix (all zeros in 2x2 portion)
+        if almost_equal(a, 0) and almost_equal(b, 0) and almost_equal(c, 0) and almost_equal(d, 0):
+            # Degenerate matrix collapses all points; translation is the only meaningful part
+            return Affine2D.identity().translate(e, f), affine_prime
         # We need x`, y` such that matrix a b c d 0 0 yields same
         # result as x, y with a b c d e f
         # That is:

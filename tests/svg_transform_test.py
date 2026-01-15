@@ -393,6 +393,12 @@ class TestAffine2D:
                     a=-4.382842e-08, b=1.0027, c=-4.2262, d=-1.847346e-07, e=0, f=0
                 ),
             ),
+            # Degenerate matrix (all zeros in 2x2 portion)
+            (
+                Affine2D(0, 0, 0, 0, 10, 20),
+                Affine2D(1, 0, 0, 1, 10, 20),
+                Affine2D(0, 0, 0, 0, 0, 0),
+            ),
         ],
     )
     def test_decompose_translation(
